@@ -219,6 +219,11 @@ module Puma
 
     end
 
+    def localhost_addresses
+      addrs = TCPSocket.gethostbyname "localhost"
+      addrs[3..-1]
+    end
+
     # Tell the server to listen on host +host+, port +port+.
     # If +optimize_for_latency+ is true (the default) then clients connecting
     # will be optimized for latency over throughput.
@@ -227,6 +232,13 @@ module Puma
     # allow to accumulate before returning connection refused.
     #
     def add_tcp_listener(host, port, optimize_for_latency=true, backlog=1024)
+      if host == "localhost"
+        localhost_addresses.each do |addr|
+          add_tcp_listener addr, port, optimize_for_latency, backlog
+        end
+        return
+      end
+
       host = host[1..-2] if host[0..0] == '['
       s = TCPServer.new(host, port)
       if optimize_for_latency
@@ -234,6 +246,8 @@ module Puma
       end
       s.setsockopt(Socket::SOL_SOCKET,Socket::SO_REUSEADDR, true)
       s.listen backlog
+      @connected_port = s.addr[1]
+
       @ios << s
       s
     end
@@ -252,6 +266,15 @@ module Puma
     def add_ssl_listener(host, port, ctx,
                          optimize_for_latency=true, backlog=1024)
       require 'puma/minissl'
+
+      MiniSSL.check
+
+      if host == "localhost"
+        localhost_addresses.each do |addr|
+          add_ssl_listener addr, port, optimize_for_latency, backlog
+        end
+        return
+      end
 
       host = host[1..-2] if host[0..0] == '['
       s = TCPServer.new(host, port)
